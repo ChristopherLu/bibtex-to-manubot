@@ -60,6 +60,9 @@ python -m bibtex_to_manubot convert -i references.bib -o citations.yaml --valida
 # Convert from DBLP URL directly
 python -m bibtex_to_manubot dblp -u https://dblp.org/pid/154/4313.html -o citations.yaml
 
+# Batch process multiple DBLP URLs
+python -m bibtex_to_manubot batch-dblp -i dblp_links.yaml --validate -v
+
 # Validate existing YAML file
 python -m bibtex_to_manubot validate -f citations.yaml
 ```
@@ -67,10 +70,31 @@ python -m bibtex_to_manubot validate -f citations.yaml
 ## Features
 
 - **Direct DBLP URL Support**: Input DBLP profile URLs and get Manubot YAML output
+- **Batch DBLP Processing**: Process multiple DBLP profiles from a configuration file
 - **Smart Deduplication**: Automatically removes arXiv duplicates based on CoRR journal detection  
 - **Website-Compatible Format**: Uses `publisher` and `link` fields for direct website integration
 - **Comprehensive Validation**: Built-in YAML format validation
 - **Chronological Sorting**: Automatically sorts citations by publication date
+
+### Batch DBLP Processing
+
+Process multiple DBLP profiles at once using a YAML configuration file:
+
+```yaml
+profiles:
+  - name: "Chris Xiaoxuan Lu"
+    url: "https://dblp.org/pid/154/4313.html" 
+    output: "chris_lu_citations.yaml"
+  - name: "Another Researcher"
+    url: "https://dblp.org/pid/xxx/xxxx.html"
+    output: "researcher_citations.yaml"
+```
+
+```bash
+python -m bibtex_to_manubot batch-dblp -i dblp_links.yaml --validate -v
+```
+
+## Supported Citation Types
 
 ## API Documentation
 

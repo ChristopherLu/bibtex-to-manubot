@@ -1,0 +1,23 @@
+# DBLP Batch Processing Configuration
+# 
+# This file contains a list of DBLP profiles to process in batch.
+# Each profile will be converted to a separate Manubot YAML file.
+
+profiles:
+  # Example 1: Individual researcher profile
+  - name: "Chris Xiaoxuan Lu"
+    url: "https://dblp.org/pid/154/4313.html"
+    output: "chris_lu_citations.yaml"
+  
+  # Example 2: Another researcher
+  - name: "Sample Researcher"
+    url: "https://dblp.org/pid/xxx/xxxx.html"  # Replace with actual DBLP PID
+    output: "sample_researcher_citations.yaml"
+  
+  # Add more profiles as needed:
+  # - name: "Researcher Name"
+  #   url: "https://dblp.org/pid/xxx/xxxx.html"
+  #   output: "output_filename.yaml"
+
+# Usage:
+# python -m bibtex_to_manubot batch-dblp -i dblp_links.yaml --validate -v

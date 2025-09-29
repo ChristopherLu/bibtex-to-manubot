@@ -352,6 +352,157 @@ def validate_yaml(yaml_file: str):
         click.echo(f"Validation error: {e}", err=True)
 
 
+@click.command()
+@click.option('--input', '-i', 'input_file', required=True, type=click.Path(exists=True),
+              help='YAML file containing DBLP URLs and output configurations')
+@click.option('--validate', is_flag=True, 
+              help='Validate output YAML format after conversion')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+def batch_dblp(input_file: str, validate: bool, verbose: bool):
+    """Batch process multiple DBLP URLs from a configuration YAML file.
+    
+    Input YAML format:
+    profiles:
+      - name: "Researcher Name"
+        url: "https://dblp.org/pid/xxx/xxxx.html"
+        output: "researcher_citations.yaml"
+      - name: "Another Researcher"
+        url: "https://dblp.org/pid/yyy/yyyy.html"
+        output: "another_citations.yaml"
+    """
+    import yaml
+    from datetime import datetime
+    import tempfile
+    
+    try:
+        # Load the batch configuration
+        with open(input_file, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        if 'profiles' not in config:
+            click.echo("Error: Input YAML must contain 'profiles' key", err=True)
+            return
+        
+        profiles = config['profiles']
+        if not isinstance(profiles, list) or len(profiles) == 0:
+            click.echo("Error: 'profiles' must be a non-empty list", err=True)
+            return
+        
+        click.echo(f"🔄 Processing {len(profiles)} DBLP profiles...")
+        
+        scraper = DBLPScraper(delay=1.5)  # Slightly longer delay for batch processing
+        converter = BibTeXConverter()
+        
+        total_success = 0
+        total_failed = 0
+        results = []
+        
+        for i, profile in enumerate(profiles, 1):
+            if not isinstance(profile, dict):
+                click.echo(f"❌ Profile {i}: Invalid format (must be dictionary)", err=True)
+                total_failed += 1
+                continue
+            
+            name = profile.get('name', f'Profile {i}')
+            url = profile.get('url')
+            output_path = profile.get('output')
+            
+            if not url or not output_path:
+                click.echo(f"❌ {name}: Missing 'url' or 'output' field", err=True)
+                total_failed += 1
+                continue
+            
+            # Validate DBLP URL
+            is_valid, validation_result = validate_dblp_url(url)
+            if not is_valid:
+                click.echo(f"❌ {name}: Invalid DBLP URL - {validation_result}", err=True)
+                total_failed += 1
+                continue
+            
+            click.echo(f"\n📖 Processing {i}/{len(profiles)}: {name}")
+            click.echo(f"   URL: {url}")
+            click.echo(f"   Output: {output_path}")
+            
+            try:
+                # Scrape DBLP profile
+                if verbose:
+                    click.echo("   Downloading BibTeX data from DBLP...")
+                
+                profile_info = scraper.get_profile_info(url)
+                if verbose and profile_info:
+                    click.echo(f"   Profile: {profile_info.get('name', 'Unknown')}")
+                
+                # Get BibTeX content as string
+                bibtex_content = scraper.scrape_profile_to_bibtex(url)
+                
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.bib', delete=False) as temp_file:
+                    temp_file.write(bibtex_content)
+                    bibtex_path = temp_file.name
+                
+                # Convert to Manubot format
+                result = converter.convert_file(bibtex_path, output_path)
+                
+                # Clean up temporary file
+                os.unlink(bibtex_path)
+                
+                if result.successful_conversions > 0:
+                    click.echo(f"   ✅ Success: {result.successful_conversions} citations → {output_path}")
+                    total_success += 1
+                    
+                    if verbose:
+                        click.echo(f"      Total entries: {result.total_entries}")
+                        click.echo(f"      Processing time: {result.processing_time:.2f}s")
+                    
+                    # Validate if requested
+                    if validate:
+                        try:
+                            validation_result = converter.validate_manubot_format(Path(output_path))
+                            if validation_result['valid']:
+                                click.echo(f"      ✓ YAML format validated")
+                            else:
+                                click.echo(f"      ⚠️  YAML validation warnings: {len(validation_result['errors'])} errors")
+                        except Exception as e:
+                            click.echo(f"      ⚠️  Validation error: {e}")
+                else:
+                    click.echo(f"   ❌ Failed: No successful conversions")
+                    total_failed += 1
+                
+                results.append({
+                    'name': name,
+                    'url': url,
+                    'output': output_path,
+                    'success': result.successful_conversions > 0,
+                    'citations': result.successful_conversions,
+                    'processing_time': result.processing_time
+                })
+                
+            except Exception as e:
+                click.echo(f"   ❌ Error: {str(e)}", err=True)
+                total_failed += 1
+        
+        # Summary
+        click.echo(f"\n🎉 Batch Processing Complete!")
+        click.echo(f"📊 Summary:")
+        click.echo(f"   • Total profiles: {len(profiles)}")
+        click.echo(f"   • Successful: {total_success}")
+        click.echo(f"   • Failed: {total_failed}")
+        click.echo(f"   • Success rate: {total_success/len(profiles)*100:.1f}%")
+        
+        if verbose and results:
+            click.echo(f"\n📄 Detailed Results:")
+            for result in results:
+                status = "✅" if result['success'] else "❌"
+                click.echo(f"   {status} {result['name']}: {result['citations']} citations")
+    
+    except FileNotFoundError:
+        click.echo(f"Error: Input file '{input_file}' not found", err=True)
+    except yaml.YAMLError as e:
+        click.echo(f"Error: Invalid YAML format in '{input_file}': {e}", err=True)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+
+
 @click.group()
 def cli():
     """BibTeX to Manubot Converter - Convert academic bibliographies to website-ready format."""
@@ -361,6 +512,7 @@ def cli():
 # Add commands to the group
 cli.add_command(main, name='convert')
 cli.add_command(dblp, name='dblp')
+cli.add_command(batch_dblp, name='batch-dblp')
 cli.add_command(validate_yaml, name='validate')
 
 
